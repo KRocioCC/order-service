@@ -10,7 +10,7 @@ spring:
       enabled: true
 
   datasource:
-    url: jdbc:postgresql://localhost:5433/order-db
+    url: jdbc:postgresql://localhost:5432/order-db
     username: admin
     password: admin
     driver-class-name: org.postgresql.Driver
