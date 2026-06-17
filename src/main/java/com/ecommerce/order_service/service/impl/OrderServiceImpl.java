@@ -12,6 +12,8 @@ import com.ecommerce.order_service.service.OrderService;
 import com.ecommerce.order_service.service.client.InventoryClient;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cloud.context.config.annotation.RefreshScope;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -22,6 +24,7 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 @Slf4j
+@RefreshScope
 public class OrderServiceImpl implements OrderService {
 
     private final OrderRepository orderRepository;
@@ -29,11 +32,19 @@ public class OrderServiceImpl implements OrderService {
 //    private final WebClient.Builder webClientBuilder;
     private final InventoryClient inventoryClient;
 
+    @Value("${order.enabled:true}")
+    private boolean ordersEnabled;
+
     @Override
     @Transactional
     public OrderResponse placeOrder(OrderRequest orderRequest) {
-        log.info("Colocando nueva orden...");
 
+        if(!ordersEnabled){
+            log.warn("Pedido rechazado, Servicio deshabilitado por configuracion.");
+            throw new RuntimeException("El servicio de ordenes está actualmente deshabilitado. Por favor, intentelo más tarde.");
+        }
+
+        log.info("Colocando nueva orden...");
         Order order = orderMapper.toOrder(orderRequest);
 
         for(var item: order.getOrderLineItemsList()){
