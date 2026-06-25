@@ -47,25 +47,32 @@ public class OrderServiceImpl implements OrderService {
         log.info("Colocando nueva orden...");
         Order order = orderMapper.toOrder(orderRequest);
 
-        for(var item: order.getOrderLineItemsList()){
+        for (var item : order.getOrderLineItemsList()) {
             String sku = item.getSku();
             Integer quantity = item.getQuantity();
 
-            try{
-//                webClientBuilder.build()
-//                        .put()
-//                        .uri("http://localhost:8082/api/v1/inventory/reduce/"+ sku,
-//                                uriBuilder -> uriBuilder.queryParam("quantity", quantity).build())
-//                        .retrieve()
-//                        .bodyToMono(String.class)
-//                        .block();
+            log.info(
+                    "Solicitando reducción de stock. sku={}, quantity={}",
+                    sku,
+                    quantity
+            );
+
+            try {
                 inventoryClient.reduceStock(sku, quantity);
-            }catch ( Exception e){
-                log.error("error al reducir stock para el producto {}: {}", sku, e.getMessage());
-                throw new IllegalArgumentException("no se pudo procesar la orden: Stock insuficiente o  " + "error de inventario");
+
+            } catch (Exception e) {
+                log.error(
+                        "Error al reducir stock. sku={}, quantity={}",
+                        sku,
+                        quantity,
+                        e
+                );
+
+                throw new IllegalArgumentException(
+                        "No se pudo procesar la orden para el producto: " + sku,
+                        e
+                );
             }
-
-
         }
         order.setOrderNumber(UUID.randomUUID().toString());
 
