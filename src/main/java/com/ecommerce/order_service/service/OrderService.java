@@ -6,8 +6,9 @@ import java.util.List;
 
 public interface OrderService {
 
-    OrderResponse placeOrder(OrderRequest orderRequest); // Create
-    List<OrderResponse> getAllOrders();                  // All
+    OrderResponse placeOrder(OrderRequest orderRequest, String userId); // Create
+    //List<OrderResponse> getAllOrders();                  // All
+    List<OrderResponse> getOrders(String userId, boolean isAdmin); //Getall por userId
     OrderResponse getOrderById(Long id);                 // One
     void deleteOrder(Long id);                           // Delete
 }
