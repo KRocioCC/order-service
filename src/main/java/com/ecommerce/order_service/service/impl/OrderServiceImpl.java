@@ -12,6 +12,7 @@ import com.ecommerce.order_service.service.OrderService;
 import com.ecommerce.order_service.service.client.InventoryClient;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import io.github.resilience4j.retry.annotation.Retry;
+import io.github.resilience4j.timelimiter.annotation.TimeLimiter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -23,6 +24,7 @@ import org.springframework.web.reactive.function.client.WebClient;
 import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 
 @Service
 @RequiredArgsConstructor
@@ -39,9 +41,11 @@ public class OrderServiceImpl implements OrderService {
     private boolean ordersEnabled;
 
     //metodo fallback que se ejecuta cuando el circuito esta abierto, cuando el servicio de inventario no esta disponible
-    public OrderResponse fallbackMethod(OrderRequest orderRequest, String userId, Throwable throwable) {
-        log.error("CIRCUIT BREAKER ACTIVADO: Fallo al colocar la orden. Causa: {}", throwable.getMessage());
-        throw new RuntimeException("El Servicio de Inventario no responde. Por favor intente más tarde.");
+    public CompletableFuture<OrderResponse> fallbackMethod(OrderRequest orderRequest, String userId, Throwable throwable) {
+        return  CompletableFuture.supplyAsync(() -> {
+            log.error(" X CIRCUIT BREAKER ACTIVADO: Fallo al colocar la orden. Causa: {}", throwable.getMessage());
+            throw new RuntimeException("El Servicio de Inventario no responde. Por favor intente más tarde.");
+        });
     }
 
     @Override
@@ -49,53 +53,64 @@ public class OrderServiceImpl implements OrderService {
     //inventory es el nombre del circuito en configuracion cd, fallbackMethod es el metodo que se ejecuta si el circuito esta abierto
     @CircuitBreaker(name = "inventory", fallbackMethod = "fallbackMethod")
     @Retry(name = "inventory")
-    public OrderResponse placeOrder(OrderRequest orderRequest, String userId) {
+    @TimeLimiter(name = "inventory")
+    public CompletableFuture<OrderResponse> placeOrder(OrderRequest orderRequest, String userId) {
 
-        if(!ordersEnabled){
-            log.warn("Pedido rechazado, Servicio deshabilitado por configuracion.");
-            throw new RuntimeException("El servicio de ordenes está actualmente deshabilitado. Por favor, intentelo más tarde.");
-        }
+        long startTime = System.currentTimeMillis();
 
-        log.info("Colocando nueva orden...");
-        Order order = orderMapper.toOrder(orderRequest);
+        return CompletableFuture.supplyAsync(() -> {
 
-        order.setUserId(userId);
-
-
-        for (var item : order.getOrderLineItemsList()) {
-            String sku = item.getSku();
-            Integer quantity = item.getQuantity();
-
-            log.info(
-                    "Solicitando reducción de stock. sku={}, quantity={}",
-                    sku,
-                    quantity
-            );
-
-            try {
-                inventoryClient.reduceStock(sku, quantity);
-
-            } catch (Exception e) {
-                log.error(
-                        "Error al reducir stock. sku={}, quantity={}",
-                        sku,
-                        quantity,
-                        e
-                );
-
-                throw new IllegalArgumentException(
-                        "No se pudo procesar la orden para el producto: " + sku,
-                        e
-                );
+            if(!ordersEnabled){
+                log.warn("Pedido rechazado, Servicio deshabilitado por configuracion.");
+                throw new RuntimeException("El servicio de ordenes está actualmente deshabilitado. Por favor, intentelo más tarde.");
             }
-        }
-        order.setOrderNumber(UUID.randomUUID().toString());
 
-        // Guardamos
-        Order savedOrder = orderRepository.save(order);
-        log.info("Orden guardada con éxito. ID: {}", savedOrder.getId());
+            log.info("Colocando nueva orden...");
+            Order order = orderMapper.toOrder(orderRequest);
 
-        return orderMapper.toOrderResponse(savedOrder);
+            order.setUserId(userId);
+
+
+            for (var item : order.getOrderLineItemsList()) {
+                String sku = item.getSku();
+                Integer quantity = item.getQuantity();
+
+                log.info(
+                        "Solicitando reducción de stock. sku={}, quantity={}",
+                        sku,
+                        quantity
+                );
+
+                try {
+                    inventoryClient.reduceStock(sku, quantity);
+
+                } catch (Exception e) {
+                    log.error(
+                            "Error al reducir stock. sku={}, quantity={}",
+                            sku,
+                            quantity,
+                            e
+                    );
+
+                    throw new IllegalArgumentException(
+                            "No se pudo procesar la orden para el producto: " + sku,
+                            e
+                    );
+                }
+            }
+            order.setOrderNumber(UUID.randomUUID().toString());
+
+            long totalTime = System.currentTimeMillis() - startTime;
+            if(totalTime > 3000){
+                log.warn("TIMEOUT DETECTADO INTERNAMENTE ({} ms) al colocar la orden. Esto puede indicar que el servicio de inventario esta respondiendo lentamente.", totalTime);
+                throw new RuntimeException("Timeout Excedido - Rollback manual");
+            }
+            // Guardamos
+            Order savedOrder = orderRepository.save(order);
+            log.info("Orden guardada con éxito. ID: {}", savedOrder.getId());
+
+            return orderMapper.toOrderResponse(savedOrder);
+        });
     }
 
     //Mtodo para obtener todas las ordenes de un usuario o todas las ordenes si es ADMIN
