@@ -10,6 +10,7 @@ import com.ecommerce.order_service.model.OrderLineItems;
 import com.ecommerce.order_service.repository.OrderRepository;
 import com.ecommerce.order_service.service.OrderService;
 import com.ecommerce.order_service.service.client.InventoryClient;
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -18,6 +19,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.reactive.function.client.WebClient;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 
@@ -35,8 +37,16 @@ public class OrderServiceImpl implements OrderService {
     @Value("${order.enabled:true}")
     private boolean ordersEnabled;
 
+    //metodo fallback que se ejecuta cuando el circuito esta abierto, cuando el servicio de inventario no esta disponible
+    public OrderResponse fallbackMethod(OrderRequest orderRequest, String userId, Throwable throwable) {
+        log.error("CIRCUIT BREAKER ACTIVADO: Fallo al colocar la orden. Causa: {}", throwable.getMessage());
+        return new OrderResponse(0L, "00000", Collections.emptyList());
+    }
+
     @Override
     @Transactional
+    //inventory es el nombre del circuito en configuracion cd, fallbackMethod es el metodo que se ejecuta si el circuito esta abierto
+    @CircuitBreaker(name = "inventory", fallbackMethod = "fallbackMethod")
     public OrderResponse placeOrder(OrderRequest orderRequest, String userId) {
 
         if(!ordersEnabled){
