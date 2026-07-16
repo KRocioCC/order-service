@@ -11,6 +11,7 @@ import com.ecommerce.order_service.repository.OrderRepository;
 import com.ecommerce.order_service.service.OrderService;
 import com.ecommerce.order_service.service.client.InventoryClient;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
+import io.github.resilience4j.retry.annotation.Retry;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -40,13 +41,14 @@ public class OrderServiceImpl implements OrderService {
     //metodo fallback que se ejecuta cuando el circuito esta abierto, cuando el servicio de inventario no esta disponible
     public OrderResponse fallbackMethod(OrderRequest orderRequest, String userId, Throwable throwable) {
         log.error("CIRCUIT BREAKER ACTIVADO: Fallo al colocar la orden. Causa: {}", throwable.getMessage());
-        return new OrderResponse(0L, "00000", Collections.emptyList());
+        throw new RuntimeException("El Servicio de Inventario no responde. Por favor intente más tarde.");
     }
 
     @Override
     @Transactional
     //inventory es el nombre del circuito en configuracion cd, fallbackMethod es el metodo que se ejecuta si el circuito esta abierto
     @CircuitBreaker(name = "inventory", fallbackMethod = "fallbackMethod")
+    @Retry(name = "inventory")
     public OrderResponse placeOrder(OrderRequest orderRequest, String userId) {
 
         if(!ordersEnabled){
