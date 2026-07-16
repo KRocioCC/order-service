@@ -24,7 +24,7 @@ public class OrderController {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public OrderResponse placeOrder(@Valid @RequestBody OrderRequest orderRequest,
-                                    @AuthenticationPrincipal Jwt jwt
+                                                       @AuthenticationPrincipal Jwt jwt
     ) {
         return orderService.placeOrder(orderRequest, jwt.getSubject());
     }

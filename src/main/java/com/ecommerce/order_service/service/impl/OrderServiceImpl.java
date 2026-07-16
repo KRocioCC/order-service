@@ -54,11 +54,7 @@ public class OrderServiceImpl implements OrderService {
     @CircuitBreaker(name = "inventory", fallbackMethod = "fallbackMethod")
     @Retry(name = "inventory")
     @TimeLimiter(name = "inventory")
-    public CompletableFuture<OrderResponse> placeOrder(OrderRequest orderRequest, String userId) {
-
-        long startTime = System.currentTimeMillis();
-
-        return CompletableFuture.supplyAsync(() -> {
+    public OrderResponse placeOrder(OrderRequest orderRequest, String userId) {
 
             if(!ordersEnabled){
                 log.warn("Pedido rechazado, Servicio deshabilitado por configuracion.");
@@ -100,17 +96,12 @@ public class OrderServiceImpl implements OrderService {
             }
             order.setOrderNumber(UUID.randomUUID().toString());
 
-            long totalTime = System.currentTimeMillis() - startTime;
-            if(totalTime > 3000){
-                log.warn("TIMEOUT DETECTADO INTERNAMENTE ({} ms) al colocar la orden. Esto puede indicar que el servicio de inventario esta respondiendo lentamente.", totalTime);
-                throw new RuntimeException("Timeout Excedido - Rollback manual");
-            }
             // Guardamos
             Order savedOrder = orderRepository.save(order);
             log.info("Orden guardada con éxito. ID: {}", savedOrder.getId());
 
             return orderMapper.toOrderResponse(savedOrder);
-        });
+
     }
 
     //Mtodo para obtener todas las ordenes de un usuario o todas las ordenes si es ADMIN
